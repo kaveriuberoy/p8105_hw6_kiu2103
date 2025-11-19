@@ -1,0 +1,264 @@
+---
+title: "p8105_hw6_kiu2103"
+output: github_document
+date: "2025-11-19"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(broom)
+library(purrr)
+library(modelr)
+library(dplyr)
+```
+
+## Problem 1 
+
+```{r}
+
+homicide_df =
+  read_csv("./data/homicide-data.csv") |>
+  mutate(
+    city_state = str_c(city, ", ", state),
+    solved = case_when(
+      str_detect(disposition, "Closed") ~ 1,
+      TRUE ~ 0
+    ),
+    victim_age = case_when(
+      victim_age %in% c("unknown", "Unknown", "N/A") ~ NA_character_,
+      TRUE ~ victim_age
+    ),
+    victim_age = as.numeric(victim_age)
+  ) |>
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"),
+    victim_race %in% c("White", "Black")
+  )
+
+baltimore_fit =
+  homicide_df |>
+  filter(city_state == "Baltimore, MD") |>
+  glm(solved ~ victim_age + victim_sex + victim_race,
+      data = _,
+      family = binomial())
+
+baltimore_tidy =
+  tidy(baltimore_fit, conf.int = TRUE, exponentiate = TRUE) |>
+  filter(term == "victim_sexMale") |>
+  select(term, estimate, conf.low, conf.high)
+
+city_or_df =
+  homicide_df |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    fit = map(data,
+              \(df) glm(solved ~ victim_age + victim_sex + victim_race,
+                       data = df,
+                       family = binomial())),
+    tidy_fit = map(fit, tidy, conf.int = TRUE, exponentiate = TRUE)
+  ) |>
+  unnest(tidy_fit) |>
+  filter(term == "victim_sexMale") |>
+  select(city_state, estimate, conf.low, conf.high) |>
+  arrange(estimate)
+
+city_or_df |>
+  ggplot(aes(x = fct_reorder(city_state, estimate),
+             y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  coord_flip() +
+  labs(
+    x = "City",
+    y = "Adjusted OR (Male vs Female)",
+    title = "Adjusted Odds Ratios for Solving Homicides by City"
+  )
+
+```
+
+
+## Problem 2 
+
+```{r}
+
+
+library(p8105.datasets)
+
+data("weather_df")
+set.seed(1)
+
+
+weather_clean =
+  weather_df |>
+  select(tmax, tmin, prcp) |>
+  drop_na()
+
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+
+boot_straps =
+  tibble(strap_number = 1:5000) |>
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(weather_clean))
+  )
+
+
+boot_results =
+  boot_straps |>
+  mutate(
+    models = map(strap_sample, \(df) lm(tmax ~ tmin + prcp, data = df)),
+    glanced = map(models, glance),
+    r2 = map_dbl(glanced, \(g)
+      g |>
+        select(r.squared) |>
+        pull()
+    ),
+    tidied = map(models, tidy),
+
+    beta_ratio = map_dbl(tidied, \(tb) {
+      beta1 = tb |> filter(term == "tmin") |> pull(estimate)
+      beta2 = tb |> filter(term == "prcp") |> pull(estimate)
+      beta1 / beta2
+    })
+  ) |>
+  select(strap_number, r2, beta_ratio)
+
+
+boot_long =
+  boot_results |>
+  pivot_longer(
+    cols = c(r2, beta_ratio),
+    names_to = "quantity",
+    values_to = "estimate"
+  )
+
+
+boot_long |>
+  ggplot(aes(x = estimate)) +
+  geom_density(alpha = 0.5, fill = "steelblue") +
+  facet_grid(~ quantity, scales = "free") +
+  labs(
+    title = "Bootstrap Distributions of R² and β₁/β₂",
+    x = "Estimate",
+    y = "Density"
+  )
+
+ci =
+  boot_long |>
+  group_by(quantity) |>
+  summarize(
+    lower = quantile(estimate, 0.025),
+    upper = quantile(estimate, 0.975)
+  )
+
+ci
+
+```
+
+The bootstrap distribution of R² is tight, smooth, and centered around 0.94, suggesting the model explains a consistent portion of the variation in tmax.
+
+In contrast, the bootstrap distribution of β₁/β₂ is extremely wide and degenerate. This occurs because the estimated coefficient for prcp is very close to zero in nearly all bootstrap samples, causing the ratio β₁/β₂ to be unstable or undefined. The resulting distribution does not represent a meaningful or interpretable parameter.
+
+
+## Problem 3 
+
+```{r}
+
+bw_df = 
+  read_csv("./data/birthweight.csv") |>
+  janitor::clean_names() |>
+  mutate(
+    babysex = factor(babysex),
+    frace   = factor(frace),
+    mrace   = factor(mrace),
+    malform = factor(malform),
+    parity  = factor(parity)
+  ) |>
+  drop_na()
+
+model_prop =
+  bw_df |>
+  lm(
+    bwt ~ bhead + blength + gaweeks +
+      ppbmi + smoken + delwt +
+      babysex +
+      bhead:babysex + blength:babysex,
+    data = _
+  )
+
+resid_df =
+  bw_df |>
+  add_predictions(model_prop) |>
+  add_residuals(model_prop)
+
+resid_df |>
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.4) +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(x = "Fitted values", y = "Residuals",
+       title = "Residuals vs Fitted for Proposed Birthweight Model")
+
+model_simple =
+  bw_df |>
+  lm(bwt ~ blength + gaweeks, data = _)
+
+model_interact =
+  bw_df |>
+  lm(
+    bwt ~ bhead * blength * babysex, data = _
+  )
+
+set.seed(1)
+
+cv_df =
+  crossv_mc(bw_df, 100) |>
+  mutate(
+    train = map(train, as_tibble),
+    test  = map(test,  as_tibble)
+  )
+
+cv_df =
+  cv_df |>
+  mutate(
+    mod_prop     = map(train, \(df)
+      lm(bwt ~ bhead + blength + gaweeks +
+           ppbmi + smoken + delwt +
+           babysex +
+           bhead:babysex + blength:babysex,
+         data = df)),
+    
+    mod_simple   = map(train, \(df)
+      lm(bwt ~ blength + gaweeks, data = df)),
+    
+    mod_interact = map(train, \(df)
+      lm(bwt ~ bhead * blength * babysex, data = df))
+  )
+
+cv_df =
+  cv_df |>
+  mutate(
+    rmse_prop     = map2_dbl(mod_prop,     test, \(m, df) rmse(model = m, data = df)),
+    rmse_simple   = map2_dbl(mod_simple,   test, \(m, df) rmse(model = m, data = df)),
+    rmse_interact = map2_dbl(mod_interact, test, \(m, df) rmse(model = m, data = df))
+  )
+
+cv_df |>
+  select(starts_with("rmse")) |>
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) |>
+  mutate(model = fct_inorder(model)) |>
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin() +
+  labs(title = "Cross-Validated RMSE for Birthweight Models",
+       x = "Model", y = "RMSE")
+
+
+```
+
+
