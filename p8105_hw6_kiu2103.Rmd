@@ -77,6 +77,13 @@ city_or_df |>
 
 ```
 
+Most cities have ORs near 1 (or with the confidence interval containing 1), suggesting little adjusted difference in the odds that a homicide is solved when the victim is male compared to female.
+
+Some cities—such as Fresno, Minneapolis, and Stockton—show ORs slightly above 1, but their confidence intervals are wide, and also contain 1. A greater than one odds ratio would indicate greater estimated odds of solving cases involving male victims, but because the confidence intervals contain one, we can't conclude this is necessarily the case. 
+
+A few cities show ORs slightly below 1, or without 1 in the confidence interval, such as New York, NY, Long Beach, CA Chicago, IL, Oakland, CA and Jacksonville, FL, (and more) implying higher odds of solving homicides of female victims. But a lot of odds ratios below one include 1 in the confidence interval, implying this conclusion is uncertain statistically. 
+
+Overall, the plot suggests considerable variability between cities in the estimated relationship between victim sex and case resolution, but wide confidence intervals in many cases indicate statistical uncertainty.
 
 ## Problem 2 
 
@@ -157,9 +164,9 @@ ci
 
 ```
 
-The bootstrap distribution of R² is tight, smooth, and centered around 0.94, suggesting the model explains a consistent portion of the variation in tmax.
+The bootstrap distribution and the confidence interval of R² is tight, smooth, and centered around 0.94 (cI between 0.934 and 0.947), suggesting the model consistently explains around 94% of the variation in tmax.
 
-In contrast, the bootstrap distribution of β₁/β₂ is extremely wide and degenerate. This occurs because the estimated coefficient for prcp is very close to zero in nearly all bootstrap samples, causing the ratio β₁/β₂ to be unstable or undefined. The resulting distribution does not represent a meaningful or interpretable parameter.
+In contrast, the bootstrap distribution of β₁/β₂ and the confidence interval (–275 to –125) is extremely wide, negative, and unstable. This occurs because the estimated coefficient for prcp is very close to zero in nearly all bootstrap samples, causing the ratio β₁/β₂ to be unstable or undefined. The resulting distribution does not represent a meaningful or interpretable parameter.
 
 
 ## Problem 3 
@@ -222,7 +229,7 @@ cv_df =
 cv_df =
   cv_df |>
   mutate(
-    mod_prop     = map(train, \(df)
+    mod_prop = map(train, \(df)
       lm(bwt ~ bhead + blength + gaweeks +
            ppbmi + smoken + delwt +
            babysex +
@@ -261,4 +268,7 @@ cv_df |>
 
 ```
 
+To propose a model for birthweight, I wanted to include as many relevant factors as possible. Since fetal growth is driven by gestational age, baby skeletal size, and maternal factors, I included: bhead and blength: strong biological predictors of overall size, gaweeks: length of gestation strongly influences weight, maternal characteristics (ppbmi, smoken, delwt) that likely affect fetal growth, babysex: included due to known sex differences at birth, interactions between size variables and sex to allow sex related scaling of growth. When I plotted them, the residuals were centered around zero with no clear pattern, suggesting the relationship between the predictors and birthweight is roughly linear. The spread of the residuals is mostly consistent, with only a bit more variability at higher fitted values, which shouldn't be too much of a problem. There are no major groups of outliers, so the model appears to fit the data pretty well.
+
+My proposed (prop) model and interaction (interact) model both show lower RMSE than the simple model, indicating better predictive performance for those models.The simple model has clearly higher RMSE and a wider distribution, meaning it is consistently worse at predicting birthweight across cross-validation splits. The interaction model performs similarly to the proposed model, though the proposed model’s RMSE distribution appears slightly lower and more concentrated, suggesting it may strike a better balance between predictive accuracy and model complexity.
 
